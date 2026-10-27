@@ -1,0 +1,62 @@
+
+name: Validar entregables Capstone
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar-entregables:
+    name: Verificar documentos y evidencias
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Verificar documentos y evidencias
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Verificando documentos del proyecto..."
+
+          count_docs=$(find . -type f \
+            \( -iname "*.docx" -o \
+               -iname "*.pptx" -o \
+               -iname "*.xlsx" \) \
+            -not -path "./.git/*" | wc -l)
+
+          if [ "$count_docs" -eq 0 ]; then
+            echo "::error::No se encontraron documentos Word, PowerPoint o Excel."
+            exit 1
+          fi
+
+          echo "Documentos encontrados: $count_docs"
+
+          echo "Verificando carpeta de evidencias..."
+
+          evidence_dir="Evidencias de Proyecto"
+
+          if [ ! -d "$evidence_dir" ]; then
+            echo "::error::No existe la carpeta Evidencias de Proyecto."
+            exit 1
+          fi
+
+          count_images=$(find "$evidence_dir" -type f \
+            \( -iname "*.png" -o \
+               -iname "*.jpg" -o \
+               -iname "*.jpeg" -o \
+               -iname "*.webp" \) | wc -l)
+
+          if [ "$count_images" -eq 0 ]; then
+            echo "::error::No se encontraron capturas de pantalla."
+            exit 1
+          fi
+
+          echo "Capturas encontradas: $count_images"
+          echo "Validación de entregables completada."
