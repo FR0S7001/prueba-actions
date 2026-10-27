@@ -11,52 +11,97 @@ permissions:
 
 jobs:
   validar-entregables:
-    name: Verificar documentos y evidencias
+    name: Revisar estructura y evidencias
     runs-on: ubuntu-latest
 
     steps:
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Verificar documentos y evidencias
+      - name: Validar carpetas y documentos
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Verificando documentos del proyecto..."
-
-          count_docs=$(find . -type f \
-            \( -iname "*.docx" -o \
-               -iname "*.pptx" -o \
-               -iname "*.xlsx" \) \
-            -not -path "./.git/*" | wc -l)
-
-          if [ "$count_docs" -eq 0 ]; then
-            echo "::error::No se encontraron documentos Word, PowerPoint o Excel."
+          error() {
+            echo "::error::$1"
             exit 1
-          fi
+          }
 
-          echo "Documentos encontrados: $count_docs"
+          comprobar_carpeta() {
+            if [ ! -d "$1" ]; then
+              error "Falta la carpeta obligatoria: $1"
+            fi
+            echo "OK: $1"
+          }
 
-          echo "Verificando carpeta de evidencias..."
+          comprobar_archivos() {
+            local carpeta="$1"
+            local cantidad
 
-          evidence_dir="Evidencias de Proyecto"
+            cantidad=$(find "$carpeta" -type f \
+              \( -iname "*.docx" -o \
+                 -iname "*.doc" -o \
+                 -iname "*.pdf" -o \
+                 -iname "*.pptx" -o \
+                 -iname "*.xlsx" -o \
+                 -iname "*.xls" \) | wc -l)
 
-          if [ ! -d "$evidence_dir" ]; then
-            echo "::error::No existe la carpeta Evidencias de Proyecto."
-            exit 1
-          fi
+            if [ "$cantidad" -eq 0 ]; then
+              error "No se encontraron documentos en: $carpeta"
+            fi
 
-          count_images=$(find "$evidence_dir" -type f \
-            \( -iname "*.png" -o \
-               -iname "*.jpg" -o \
-               -iname "*.jpeg" -o \
-               -iname "*.webp" \) | wc -l)
+            echo "OK: $carpeta contiene $cantidad documento(s)"
+          }
 
-          if [ "$count_images" -eq 0 ]; then
-            echo "::error::No se encontraron capturas de pantalla."
-            exit 1
-          fi
+          comprobar_imagenes() {
+            local carpeta="$1"
+            local cantidad
 
-          echo "Capturas encontradas: $count_images"
-          echo "Validación de entregables completada."
+            cantidad=$(find "$carpeta" -type f \
+              \( -iname "*.png" -o \
+                 -iname "*.jpg" -o \
+                 -iname "*.jpeg" -o \
+                 -iname "*.webp" \) | wc -l)
+
+            if [ "$cantidad" -eq 0 ]; then
+              error "No hay capturas de imagen en: $carpeta"
+            fi
+
+            echo "OK: $carpeta contiene $cantidad imagen(es)"
+          }
+
+          echo "=== FASE 1 ==="
+
+          comprobar_carpeta "Fase1"
+          comprobar_carpeta "Fase1/Evidencias Grupales"
+          comprobar_carpeta "Fase1/Evidencias individuales"
+
+          comprobar_archivos "Fase1/Evidencias Grupales"
+          comprobar_archivos "Fase1/Evidencias individuales"
+
+          echo "=== FASE 2 ==="
+
+          comprobar_carpeta "Fase2"
+          comprobar_carpeta "Fase2/Evidencias Grupales"
+          comprobar_carpeta "Fase2/Evidencias individuales"
+          comprobar_carpeta "Fase2/Evidencias de Proyecto"
+
+          comprobar_carpeta "Fase2/Evidencias de Proyecto/Base de datos"
+          comprobar_carpeta "Fase2/Evidencias de Proyecto/Evidencias de documentación"
+          comprobar_carpeta "Fase2/Evidencias de Proyecto/Evidencias de sistema"
+          comprobar_carpeta "Fase2/Evidencias de Proyecto/Presentacion Proyecto"
+
+          comprobar_archivos "Fase2/Evidencias Grupales"
+          comprobar_archivos "Fase2/Evidencias individuales"
+
+          comprobar_archivos "Fase2/Evidencias de Proyecto/Base de datos"
+          comprobar_archivos "Fase2/Evidencias de Proyecto/Evidencias de documentación"
+          comprobar_archivos "Fase2/Evidencias de Proyecto/Evidencias de sistema"
+          comprobar_archivos "Fase2/Evidencias de Proyecto/Presentacion Proyecto"
+
+          comprobar_imagenes "Fase2/Evidencias de Proyecto/Base de datos"
+          comprobar_imagenes "Fase2/Evidencias de Proyecto/Evidencias de sistema"
+
+          echo "=== VALIDACION COMPLETADA ==="
+          echo "La estructura y las evidencias requeridas fueron verificadas."
