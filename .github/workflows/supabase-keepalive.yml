@@ -1,0 +1,41 @@
+name: Supabase keep-alive
+
+# Evita que el plan gratuito de Supabase pause el proyecto por inactividad
+# (Manual Técnico, sección 7.1).
+# Requiere los secretos del repositorio: SUPABASE_URL y SUPABASE_ANON_KEY
+# (Settings > Secrets and variables > Actions).
+
+on:
+  schedule:
+    - cron: "0 12 * * *"   # todos los días a las 12:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Consultar tabla pública
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verificar secretos
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Faltan los secretos SUPABASE_URL y/o SUPABASE_ANON_KEY"
+            exit 1
+          fi
+
+      - name: Ping a Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --retry 3 --max-time 20 \
+            "$SUPABASE_URL/rest/v1/categorias?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY")
+          echo "HTTP $code"
+          [ "$code" = "200" ] || { echo "::error::Supabase respondió HTTP $code"; exit 1; }

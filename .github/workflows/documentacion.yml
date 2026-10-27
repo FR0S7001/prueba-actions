@@ -1,107 +1,153 @@
-
 name: Validar entregables Capstone
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: validar-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validar-entregables:
     name: Revisar estructura y evidencias
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Validar carpetas y documentos
+      - name: Validar carpetas y evidencias
         shell: bash
         run: |
           set -euo pipefail
 
-          error() {
+          ERRORES=0
+
+          fallar() {
             echo "::error::$1"
-            exit 1
+            ERRORES=$((ERRORES + 1))
           }
 
-          comprobar_carpeta() {
-            if [ ! -d "$1" ]; then
-              error "Falta la carpeta obligatoria: $1"
+          # contar <carpeta> <ext1> <ext2> ...  -> imprime cantidad de archivos
+          contar() {
+            local carpeta="$1"; shift
+            local args=() ext
+            for ext in "$@"; do
+              [ ${#args[@]} -gt 0 ] && args+=(-o)
+              args+=(-iname "*.${ext}")
+            done
+            find "$carpeta" -type f \( "${args[@]}" \) | wc -l
+          }
+
+          carpeta() {
+            if [ -d "$1" ]; then echo "OK: $1"; else fallar "Falta la carpeta obligatoria: $1"; fi
+          }
+
+          # exigir <carpeta> <etiqueta> <ext...>  (error si no hay ninguno)
+          exigir() {
+            local carpeta="$1" etiqueta="$2"; shift 2
+            [ -d "$carpeta" ] || return 0   # la falta de carpeta ya se reportó
+            local n; n=$(contar "$carpeta" "$@")
+            if [ "$n" -eq 0 ]; then
+              fallar "No hay $etiqueta en: $carpeta"
+            else
+              echo "OK: $carpeta -> $n $etiqueta"
             fi
-            echo "OK: $1"
           }
 
-          comprobar_archivos() {
-            local carpeta="$1"
-            local cantidad
-
-            cantidad=$(find "$carpeta" -type f \
-              \( -iname "*.docx" -o \
-                 -iname "*.doc" -o \
-                 -iname "*.pdf" -o \
-                 -iname "*.pptx" -o \
-                 -iname "*.xlsx" -o \
-                 -iname "*.xls" \) | wc -l)
-
-            if [ "$cantidad" -eq 0 ]; then
-              error "No se encontraron documentos en: $carpeta"
+          # esperar <carpeta> <etiqueta> <ext...>  (solo advertencia: entrega pendiente)
+          esperar() {
+            local carpeta="$1" etiqueta="$2"; shift 2
+            [ -d "$carpeta" ] || return 0
+            local n; n=$(contar "$carpeta" "$@")
+            if [ "$n" -eq 0 ]; then
+              echo "::warning::Pendiente: aún no hay $etiqueta en $carpeta"
+            else
+              echo "OK: $carpeta -> $n $etiqueta"
             fi
-
-            echo "OK: $carpeta contiene $cantidad documento(s)"
           }
 
-          comprobar_imagenes() {
-            local carpeta="$1"
-            local cantidad
+          DOCS=(docx doc pdf pptx xlsx xls)
+          IMGS=(png jpg jpeg webp)
 
-            cantidad=$(find "$carpeta" -type f \
-              \( -iname "*.png" -o \
-                 -iname "*.jpg" -o \
-                 -iname "*.jpeg" -o \
-                 -iname "*.webp" \) | wc -l)
-
-            if [ "$cantidad" -eq 0 ]; then
-              error "No hay capturas de imagen en: $carpeta"
-            fi
-
-            echo "OK: $carpeta contiene $cantidad imagen(es)"
-          }
+          F2="Fase2"
+          PROY="$F2/Evidencias de Proyecto"
 
           echo "=== FASE 1 ==="
-
-          comprobar_carpeta "Fase1"
-          comprobar_carpeta "Fase1/Evidencias Grupales"
-          comprobar_carpeta "Fase1/Evidencias individuales"
-
-          comprobar_archivos "Fase1/Evidencias Grupales"
-          comprobar_archivos "Fase1/Evidencias individuales"
+          carpeta "Fase1/Evidencias Grupales"
+          carpeta "Fase1/Evidencias individuales"
+          exigir  "Fase1/Evidencias Grupales"     "documentos" "${DOCS[@]}"
+          exigir  "Fase1/Evidencias individuales" "documentos" "${DOCS[@]}"
 
           echo "=== FASE 2 ==="
+          carpeta "$F2/Evidencias Grupales"
+          carpeta "$F2/Evidencias individuales"
+          carpeta "$PROY/Base de datos"
+          carpeta "$PROY/Evidencias de documentacion"
+          carpeta "$PROY/Evidencias de sistema"
+          carpeta "$PROY/Presentacion Proyecto"
 
-          comprobar_carpeta "Fase2"
-          comprobar_carpeta "Fase2/Evidencias Grupales"
-          comprobar_carpeta "Fase2/Evidencias individuales"
-          comprobar_carpeta "Fase2/Evidencias de Proyecto"
+          exigir "$F2/Evidencias Grupales"            "documentos" "${DOCS[@]}"
+          exigir "$F2/Evidencias individuales"        "documentos" "${DOCS[@]}"
+          exigir "$PROY/Evidencias de documentacion"  "documentos" "${DOCS[@]}"
+          exigir "$PROY/Base de datos"                "scripts SQL" sql
+          exigir "$PROY/Base de datos"                "capturas"    "${IMGS[@]}"
+          exigir "$PROY/Evidencias de sistema"        "capturas"    "${IMGS[@]}"
+          esperar "$PROY/Presentacion Proyecto"       "presentación" pptx pdf
 
-          comprobar_carpeta "Fase2/Evidencias de Proyecto/Base de datos"
-          comprobar_carpeta "Fase2/Evidencias de Proyecto/Evidencias de documentacion"
-          comprobar_carpeta "Fase2/Evidencias de Proyecto/Evidencias de sistema"
-          comprobar_carpeta "Fase2/Evidencias de Proyecto/Presentacion Proyecto"
+          echo "=== FASE 3 ==="
+          if [ -d "Fase3" ]; then echo "OK: Fase3"; else fallar "Falta la carpeta Fase3"; fi
 
-          comprobar_archivos "Fase2/Evidencias Grupales"
-          comprobar_archivos "Fase2/Evidencias individuales"
+          echo "=== SEGURIDAD ==="
+          SECRETOS=$(find . -path ./.git -prune -o -type f \( -name ".env" -o -name ".env.*" -o -name "*.pem" -o -name "*.key" \) ! -name ".env.example" -print)
+          if [ -n "$SECRETOS" ]; then
+            fallar "Archivos sensibles en el repositorio: $SECRETOS"
+          else
+            echo "OK: no hay archivos .env/.pem/.key"
+          fi
 
-          comprobar_archivos "Fase2/Evidencias de Proyecto/Base de datos"
-          comprobar_archivos "Fase2/Evidencias de Proyecto/Evidencias de documentación"
-          comprobar_archivos "Fase2/Evidencias de Proyecto/Evidencias de sistema"
-          comprobar_archivos "Fase2/Evidencias de Proyecto/Presentacion Proyecto"
-
-          comprobar_imagenes "Fase2/Evidencias de Proyecto/Base de datos"
-          comprobar_imagenes "Fase2/Evidencias de Proyecto/Evidencias de sistema"
+          if [ "$ERRORES" -gt 0 ]; then
+            echo "::error::Validación fallida con $ERRORES error(es)."
+            exit 1
+          fi
 
           echo "=== VALIDACION COMPLETADA ==="
-          echo "La estructura y las evidencias requeridas fueron verificadas."
+
+      - name: Verificar que los .docx/.xlsx/.pptx no estén corruptos
+        shell: bash
+        run: |
+          set -uo pipefail
+          malos=0
+          while IFS= read -r -d '' f; do
+            if ! python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).testzip()" "$f" 2>/dev/null; then
+              echo "::error file=$f::Archivo Office corrupto o no es un zip válido"
+              malos=$((malos + 1))
+            fi
+          done < <(find . -path ./.git -prune -o -type f \( -iname "*.docx" -o -iname "*.xlsx" -o -iname "*.pptx" \) -print0)
+          [ "$malos" -eq 0 ] && echo "OK: todos los archivos Office abren correctamente"
+          exit $([ "$malos" -eq 0 ] && echo 0 || echo 1)
+
+      - name: Resumen
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Resumen de entregables"
+            echo
+            echo "| Tipo | Cantidad |"
+            echo "|---|---|"
+            echo "| Word (.docx) | $(find . -path ./.git -prune -o -iname '*.docx' -type f -print | wc -l) |"
+            echo "| Excel (.xlsx) | $(find . -path ./.git -prune -o -iname '*.xlsx' -type f -print | wc -l) |"
+            echo "| PowerPoint (.pptx) | $(find . -path ./.git -prune -o -iname '*.pptx' -type f -print | wc -l) |"
+            echo "| PDF | $(find . -path ./.git -prune -o -iname '*.pdf' -type f -print | wc -l) |"
+            echo "| Capturas (png/jpg) | $(find . -path ./.git -prune -o \( -iname '*.png' -o -iname '*.jpg' \) -type f -print | wc -l) |"
+            echo "| Scripts SQL | $(find . -path ./.git -prune -o -iname '*.sql' -type f -print | wc -l) |"
+          } >> "$GITHUB_STEP_SUMMARY"
